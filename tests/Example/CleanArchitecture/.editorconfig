@@ -1,0 +1,6 @@
+root = true
+
+# C# files
+[*.cs]
+
+dotnet_diagnostic.STR001.severity = warning

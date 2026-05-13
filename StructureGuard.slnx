@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".github\workflows\pipeline.yml" />
+    <File Path=".gitignore" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/StructureGuard/StructureGuard.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Specifications/Specifications.csproj" />
+    <Project Path="tests/UnitTests/UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Example/">
+    <Project Path="tests/Example/Architecture/Architecture.csproj" />
+    <Project Path="tests/Example/CleanArchitecture/CleanArchitecture.csproj" />
+  </Folder>
+</Solution>
