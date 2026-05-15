@@ -6,8 +6,8 @@
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
         <RootNamespace>StructureGuard</RootNamespace>
         <PackageOutputPath>./nupkg</PackageOutputPath>
-        <!--        <PackageLicenseFile>LICENSE</PackageLicenseFile>-->
-        <!--        <PackageReadmeFile>README.md</PackageReadmeFile>-->
+        <PackageLicenseFile>LICENSE</PackageLicenseFile>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageProjectUrl>https://github.com/netwatwezoeken/structureguard</PackageProjectUrl>
         <RepositoryUrl>https://github.com/netwatwezoeken/structureguard</RepositoryUrl>
     </PropertyGroup>
@@ -18,5 +18,24 @@
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="../../LICENSE"
+              Pack="true"
+              PackagePath="" />
+
+        <None Include="../../README.md"
+              Pack="true"
+              PackagePath="" />
+        
+        <None Include="$(OutputPath)$(AssemblyName).dll"
+              Pack="true"
+              PackagePath="analyzers/dotnet/cs/"
+              Visible="false" />
+
+        <None Include="buildTransitive\StructureGuard.targets"
+              Pack="true"
+              PackagePath="buildTransitive\StructureGuard.targets" />
     </ItemGroup>
 </Project>
