@@ -22,6 +22,6 @@
     </ItemGroup>
     
     <ItemGroup>
-        <AdditionalFiles Include="architecture.mmd" />
+        <AdditionalFiles Include="architecture.md" />
     </ItemGroup>
 </Project>
