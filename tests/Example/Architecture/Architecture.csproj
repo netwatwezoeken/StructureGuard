@@ -20,8 +20,4 @@
                           ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\..\..\src\StructureGuard\StructureGuard.csproj" />
     </ItemGroup>
-    
-    <ItemGroup>
-        <AdditionalFiles Include="architecture.mmd" />
-    </ItemGroup>
 </Project>

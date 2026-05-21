@@ -20,34 +20,39 @@ namespace StructureGuard
 
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            if (!Debugger.IsAttached)
-            {
-                Debugger.Launch();
-            }
-            
             IncrementalValuesProvider<MermaidFile> mermaidFiles =
                 context.AdditionalTextsProvider
                     .Where(file =>
                         file.Path.EndsWith(".mmd", StringComparison.OrdinalIgnoreCase) ||
-                        file.Path.EndsWith(".mermaid", StringComparison.OrdinalIgnoreCase))
-                    .Select((file, cancellationToken) =>
+                        file.Path.EndsWith(".mermaid", StringComparison.OrdinalIgnoreCase) ||
+                        file.Path.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+                    .SelectMany((file, cancellationToken) =>
                     {
                         SourceText sourceText = file.GetText(cancellationToken);
 
                         if (sourceText == null)
                         {
-                            return null;
+                            return Array.Empty<MermaidFile>();
                         }
 
-                        string content = sourceText.ToString();
-                        string rootNamespace = ParseNamespaceFromYaml(content);
+                        var content = sourceText.ToString();
+                        var extension = System.IO.Path.GetExtension(file.Path);
 
-                        return new MermaidFile(file.Path, content, rootNamespace);
+                        if (extension.Equals(".md", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ExtractMermaidFromMarkdown(file.Path, content);
+                        }
+                        else
+                        {
+                            var rootNamespace = ParseNamespaceFromYaml(content);
+                            return new[] { new MermaidFile(file.Path, content, rootNamespace) };
+                        }
                     })
                     .Where(file => file != null);
 
             context.RegisterSourceOutput(mermaidFiles, (sourceProductionContext, mermaidFile) =>
             {
+                string fileName = System.IO.Path.GetFileNameWithoutExtension(mermaidFile.Path);
                 if (string.IsNullOrWhiteSpace(mermaidFile.RootNamespace))
                 {
                     sourceProductionContext.ReportDiagnostic(Diagnostic.Create(
@@ -67,19 +72,58 @@ namespace StructureGuard
                 string generatedSource = GenerateAnalyzerSource(
                     rootNamespace: mermaidFile.RootNamespace,
                     analyzerNamespace: "Analyzer",
-                    analyzerClassName: "Analyzer",
+                    analyzerClassName: fileName + "Analyzer",
                     dependencies: dependencies);
             
                 sourceProductionContext.AddSource(
-                    "Analyzer.g.cs",
+                    $"{fileName}Analyzer.g.cs",
                     SourceText.From(generatedSource, Encoding.UTF8));
             });
         }
 
-        private static string ParseNamespaceFromYaml(string content)
+        private static IEnumerable<MermaidFile> ExtractMermaidFromMarkdown(string filePath, string content)
         {
-            string[] lines = content.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
-            bool inYaml = false;
+            var mermaidBlocks = new List<MermaidFile>();
+            var lines = content.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            var inMermaidBlock = false;
+            var currentBlock = new StringBuilder();
+
+            foreach (var line in lines)
+            {
+                if (line.Trim().StartsWith("```mermaid"))
+                {
+                    inMermaidBlock = true;
+                    currentBlock.Clear();
+                    continue;
+                }
+
+                if (inMermaidBlock && line.Trim().StartsWith("```"))
+                {
+                    inMermaidBlock = false;
+                    var blockContent = currentBlock.ToString();
+                    if (IsTaggedWithStructureGuard(blockContent))
+                    {
+                        var rootNamespace = ParseNamespaceFromYaml(blockContent);
+                        mermaidBlocks.Add(new MermaidFile(filePath, blockContent, rootNamespace));
+                    }
+                    continue;
+                }
+
+                if (inMermaidBlock)
+                {
+                    currentBlock.AppendLine(line);
+                }
+            }
+
+            return mermaidBlocks;
+        }
+
+        private static bool IsTaggedWithStructureGuard(string content)
+        {
+            var lines = content.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            var inYaml = false;
+            var inTags = false;
+
             foreach (var rawLine in lines)
             {
                 string line = rawLine.Trim();
@@ -98,6 +142,50 @@ namespace StructureGuard
 
                 if (inYaml)
                 {
+                    if (line.StartsWith("tags:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Check if it's tags: [StructureGuard]
+                        if (line.Contains("StructureGuard"))
+                        {
+                            return true;
+                        }
+                        inTags = true;
+                        continue;
+                    }
+
+                    if (inTags)
+                    {
+                        // If we hit another key, we are no longer in tags
+                        if (line.Contains(":") && !line.TrimStart().StartsWith("-"))
+                        {
+                            inTags = false;
+                        }
+                        else if (line.TrimStart().StartsWith("-") && line.Contains("StructureGuard"))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static string ParseNamespaceFromYaml(string content)
+        {
+            var lines = content.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            var inYaml = false;
+            foreach (var rawLine in lines)
+            {
+                string line = rawLine.Trim();
+                if (line == "---")
+                {
+                    inYaml = !inYaml;
+                    continue;
+                }
+
+                if (inYaml)
+                {
                     if (line.StartsWith("namespace:", StringComparison.OrdinalIgnoreCase))
                     {
                         return line.Substring("namespace:".Length).Trim();
@@ -110,13 +198,13 @@ namespace StructureGuard
 
         private static List<DependencyEdge> ParseMermaidDependencies(string mermaid)
         {
-            List<DependencyEdge> dependencies = new List<DependencyEdge>();
+            List<DependencyEdge> dependencies = [];
 
-            string[] lines = mermaid.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            var lines = mermaid.Split([ "\r\n", "\n" ], StringSplitOptions.None);
 
-            foreach (string rawLine in lines)
+            foreach (var rawLine in lines)
             {
-                string line = rawLine.Trim();
+                var line = rawLine.Trim();
 
                 if (line.Length == 0)
                 {
@@ -128,15 +216,15 @@ namespace StructureGuard
                     continue;
                 }
 
-                int arrowIndex = line.IndexOf("-->", StringComparison.Ordinal);
+                var arrowIndex = line.IndexOf("-->", StringComparison.Ordinal);
 
                 if (arrowIndex < 0)
                 {
                     continue;
                 }
 
-                string from = CleanNodeName(line.Substring(0, arrowIndex));
-                string to = CleanNodeName(line.Substring(arrowIndex + 3));
+                var from = CleanNodeName(line.Substring(0, arrowIndex));
+                var to = CleanNodeName(line.Substring(arrowIndex + 3));
 
                 if (from.Length == 0 || to.Length == 0)
                 {
@@ -178,7 +266,7 @@ namespace StructureGuard
             string analyzerClassName,
             List<DependencyEdge> dependencies)
         {
-            StringBuilder builder = new StringBuilder();
+            var builder = new StringBuilder();
 
             builder.AppendLine("// <auto-generated />");
             builder.AppendLine("using System.Collections.Generic;");
@@ -189,22 +277,22 @@ namespace StructureGuard
             builder.AppendLine("namespace " + analyzerNamespace);
             builder.AppendLine("{");
             builder.AppendLine("    [DiagnosticAnalyzer(LanguageNames.CSharp)]");
-            builder.AppendLine("    public class " + analyzerClassName + " : SliceAnalyzer");
+            builder.AppendLine("    public class " + analyzerClassName + " : " + nameof(SliceAnalyzer));
             builder.AppendLine("    {");
             builder.AppendLine("        protected override void OnInitialize(AnalysisContext context)");
             builder.AppendLine("        {");
-            builder.AppendLine("            RootNameSpace = \"" + EscapeString(rootNamespace) + "\";");
+            builder.AppendLine("            RootNameSpace = \"" + rootNamespace + "\";");
             builder.AppendLine("            PermittedDependencies = new List<Dependency>()");
             builder.AppendLine("            {");
 
-            for (int i = 0; i < dependencies.Count; i++)
+            for (var i = 0; i < dependencies.Count; i++)
             {
-                DependencyEdge dependency = dependencies[i];
+                var dependency = dependencies[i];
 
                 builder.Append("                new Dependency(new Layer(\"");
-                builder.Append(EscapeString(dependency.From));
+                builder.Append(dependency.From);
                 builder.Append("\"), new Layer(\"");
-                builder.Append(EscapeString(dependency.To));
+                builder.Append(dependency.To);
                 builder.Append("\"))");
 
                 if (i < dependencies.Count - 1)
@@ -235,7 +323,7 @@ namespace StructureGuard
             {
                 Path = path;
                 Content = content;
-                RootNamespace = rootNamespace;
+                RootNamespace = EscapeString(rootNamespace);
             }
 
             public string Path { get; }
@@ -244,13 +332,13 @@ namespace StructureGuard
 
             public string RootNamespace { get; }
         }
-
+        
         private sealed class DependencyEdge
         {
             public DependencyEdge(string from, string to)
             {
-                From = from;
-                To = to;
+                From = EscapeString(from);
+                To = EscapeString(to);
             }
 
             public string From { get; }
