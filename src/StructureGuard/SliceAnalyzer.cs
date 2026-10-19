@@ -136,30 +136,12 @@ namespace StructureGuard
 
         private void AnalyseMethodSyntax(SyntaxNodeAnalysisContext context)
         {
-            // Get the invocation expression
             var invocationNode = (InvocationExpressionSyntax)context.Node;
-
-            // Get the symbol info for the invoked method
             var symbolInfo = context.SemanticModel.GetSymbolInfo(invocationNode);
-            var fromNamespace = GetContainingNamespace(context.Node.SyntaxTree);
-            var fromNamespaceThing = NamespaceMatcher.ToCodePart(RootNameSpace, fromNamespace);
             var toNamespace = symbolInfo.Symbol?.ContainingNamespace.ToString();
-            var toNamespaceThing = NamespaceMatcher.ToCodePart(RootNameSpace, toNamespace);
-            var namespaceDependencies = new Dictionary<CodePart, HashSet<(CodePart, Location, string)>>();
+            var to = NamespaceMatcher.ToCodePart(RootNameSpace, toNamespace);
 
-            if (fromNamespaceThing != null && toNamespaceThing != null && fromNamespaceThing != toNamespaceThing &&
-                toNamespaceThing.Layer != null)
-            {
-                if (!namespaceDependencies.TryGetValue(fromNamespaceThing, out var dependencies))
-                {
-                    dependencies = new HashSet<(CodePart, Location, string)>();
-                    namespaceDependencies[fromNamespaceThing] = dependencies;
-                }
-
-                dependencies.Add((toNamespaceThing, context.Node.GetLocation(), "Method"));
-            }
-        
-            ReportViolatingDependencies(context, namespaceDependencies);
+            ReportIfViolatingNew(context, to);
         }
     
         private void ReportViolatingDependencies(SyntaxNodeAnalysisContext context, Dictionary<CodePart, HashSet<(CodePart, Location, string)>> namespaceDependencies)

@@ -606,5 +606,38 @@ public class LayerViolationDetection
             .WithLocation(0)
             .WithArguments("Domain", "Infrastructure"));
         await _cSharpAnalyzerTest.RunAsync();
+    }   
+    
+    [Fact]
+    public async Task Reference_to_self_is_allowed()
+    {
+        var test = new CustomCSharpAnalyzerTest<DefaultVerifier>(
+            "Nwwz",
+            new List<Dependency>())
+        {
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90
+        };
+        test.TestState.AnalyzerConfigFiles.Add(("/.editorconfig", "name = value"));
+
+        test.TestState.Sources.Add(("Person.cs", /*lang=csharp*/
+            """
+            namespace Nwwz.Infrastructure
+            {
+                public class Person
+                {
+                    public int Id()
+                    {
+                        return Id2();
+                    }
+            
+                    public int Id2()
+                    {
+                        return 1;
+                    }
+                }
+            }
+            """));
+
+        await test.RunAsync();
     }
 }
